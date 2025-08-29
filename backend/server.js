@@ -3,6 +3,7 @@ const sqlite3 = require("sqlite3").verbose();
 const cors = require("cors");
 const nodemailer = require("nodemailer");
 const cron = require("node-cron");
+const path = require("path");
 
 const app = express();
 app.use(cors());
@@ -11,7 +12,7 @@ app.use(express.json());
 // --- DATABASE ---
 const db = new sqlite3.Database("./sgfman.db");
 
-// Base jobs table (includes all columns used by frontend)
+// Jobs table
 db.run(`CREATE TABLE IF NOT EXISTS jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   address TEXT,
@@ -34,34 +35,17 @@ db.run(`CREATE TABLE IF NOT EXISTS jobs (
   energyReport TEXT DEFAULT 'No'
 )`);
 
-// Settings table: frequency + 2 templates
-db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS settings (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    emailFrequency TEXT DEFAULT 'Weekly',
-    statusTemplate TEXT DEFAULT 'This is the default Job Status Update email.',
-    newJobTemplate TEXT DEFAULT 'Welcome! Your new project has been created.'
-  )`);
-
-  db.run(
-    `INSERT OR IGNORE INTO settings (id, emailFrequency, statusTemplate, newJobTemplate)
-     VALUES (1, 'Weekly', 'This is the default Job Status Update email.', 'Welcome! Your new project has been created.')`
-  );
-});
-
-// --- Defensive migration in case your DB predates the new columns ---
-db.all("PRAGMA table_info(settings);", [], (err, cols) => {
-  if (err) return console.error("❌ settings schema check:", err.message);
-  const names = new Set(cols.map(c => c.name));
-  const toAdd = [];
-  if (!names.has("emailFrequency")) toAdd.push(`ALTER TABLE settings ADD COLUMN emailFrequency TEXT DEFAULT 'Weekly'`);
-  if (!names.has("statusTemplate")) toAdd.push(`ALTER TABLE settings ADD COLUMN statusTemplate TEXT DEFAULT 'This is the default Job Status Update email.'`);
-  if (!names.has("newJobTemplate")) toAdd.push(`ALTER TABLE settings ADD COLUMN newJobTemplate TEXT DEFAULT 'Welcome! Your new project has been created.'`);
-
-  toAdd.forEach(sql => db.run(sql, e => {
-    if (e) console.error("❌ settings migrate:", e.message);
-  }));
-});
+// Settings table
+db.run(`CREATE TABLE IF NOT EXISTS settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  emailFrequency TEXT DEFAULT 'Weekly',
+  emailTemplate TEXT DEFAULT 'This is the default job status update email.',
+  newJobTemplate TEXT DEFAULT 'This is the default new job email.'
+)`);
+db.run(
+  `INSERT OR IGNORE INTO settings (id, emailFrequency, emailTemplate, newJobTemplate) 
+   VALUES (1, 'Weekly', 'This is the default job status update email.', 'This is the default new job email.')`
+);
 
 // --- EMAIL TRANSPORT ---
 const transporter = nodemailer.createTransport({
@@ -70,17 +54,15 @@ const transporter = nodemailer.createTransport({
   secure: false,
   auth: {
     user: "info@superiorgrannyflats.com.au",
-    pass: "Granny2021",
-  },
+    pass: "Granny2021"
+  }
 });
 
-// --- EMAIL HELPERS ---
-function sendStatusEmail(job, settings) {
-  if (!job.email1) return console.log(`⚠️ Skipped job ${job.id}: no Email1`);
-  if ((job.status || "Design Phase") === "Complete") {
-    // keep previous behavior (skip complete)
-    return console.log(`⚠️ Skipped job ${job.id}: status Complete`);
-  }
+// --- HELPERS ---
+function sendJobStatusEmail(job, settings) {
+  if (!job.email1) return console.log(`Skipped ${job.id}: no Email1`);
+  if ((job.status || "Design Phase") === "Complete")
+    return console.log(`Skipped ${job.id}: Complete`);
 
   const mailOptions = {
     from: "info@superiorgrannyflats.com.au",
@@ -90,18 +72,18 @@ function sendStatusEmail(job, settings) {
       `Hi ${job.name1 || "Client"},\n\n` +
       `This is an automated update for your project at ${job.address}.\n\n` +
       `Project Status: ${job.status || "Design Phase"}\n\n` +
-      `${settings.statusTemplate || ""}\n\n` +
-      `Thanks,\n\nThe Superior Team`,
+      `${settings.emailTemplate || ""}\n\n` +
+      `Thanks,\n\nThe Superior Team`
   };
 
   transporter.sendMail(mailOptions, (err, info) => {
-    if (err) console.error(`❌ Status email to ${job.email1}:`, err.message);
-    else console.log(`✅ Status email sent to ${job.email1}:`, info.response);
+    if (err) console.error("❌ Error sending status email:", err.message);
+    else console.log("✅ Status email sent:", info.response);
   });
 }
 
 function sendNewJobEmail(job, settings) {
-  if (!job.email1) return console.log(`⚠️ Skipped NEW job ${job.id}: no Email1`);
+  if (!job.email1) return console.log(`Skipped new job email for ${job.id}: no Email1`);
 
   const mailOptions = {
     from: "info@superiorgrannyflats.com.au",
@@ -109,39 +91,37 @@ function sendNewJobEmail(job, settings) {
     subject: "Superior Granny Flats - New Project Created",
     text:
       `Hi ${job.name1 || "Client"},\n\n` +
-      `A new project has been created for ${job.address}.\n\n` +
-      `Current Status: ${job.status || "Design Phase"}\n\n` +
+      `Your new project at ${job.address} has been created in our system.\n\n` +
       `${settings.newJobTemplate || ""}\n\n` +
-      `Thanks,\n\nThe Superior Team`,
+      `Thanks,\n\nThe Superior Team`
   };
 
   transporter.sendMail(mailOptions, (err, info) => {
-    if (err) console.error(`❌ New Job email to ${job.email1}:`, err.message);
-    else console.log(`✅ New Job email sent to ${job.email1}:`, info.response);
+    if (err) console.error("❌ Error sending new job email:", err.message);
+    else console.log("✅ New job email sent:", info.response);
   });
 }
 
-// --- CRON JOBS (Status updates only) ---
+// --- CRON JOBS ---
 let currentTask = null;
 function scheduleEmails(freq) {
   if (currentTask) currentTask.stop();
+  let cronExpr = "0 9 * * 1"; // Weekly default
 
-  let cronExpr = "0 9 * * 1"; // default weekly
   if (freq === "Every 2 Minutes") cronExpr = "*/2 * * * *";
   if (freq === "Daily") cronExpr = "0 9 * * *";
   if (freq === "Weekly") cronExpr = "0 9 * * 1";
   if (freq === "Monthly") cronExpr = "0 9 1 * *";
 
-  console.log("📅 Scheduling emails:", freq, "→ cron:", cronExpr);
+  console.log("📅 Scheduling emails:", freq);
 
   currentTask = cron.schedule(cronExpr, () => {
-    console.log("⏰ Cron triggered (Status Updates)...");
     db.get("SELECT * FROM settings WHERE id=1", [], (err, settingsRow) => {
       if (err) return console.error("❌ Error reading settings:", err.message);
       db.all("SELECT * FROM jobs", [], (err2, rows) => {
-        if (err2) return console.error("❌ Error reading jobs:", err2.message);
-        console.log(`📋 Found ${rows.length} jobs in DB for status updates`);
-        rows.forEach((job) => sendStatusEmail(job, settingsRow));
+        if (!err2 && rows.length) {
+          rows.forEach((job) => sendJobStatusEmail(job, settingsRow));
+        }
       });
     });
   });
@@ -162,45 +142,25 @@ app.post("/api/jobs", (req, res) => {
     `INSERT INTO jobs 
     (address, finish, class, name1, name2, email1, email2, notes, price, date, colors, windows, contract, status,
      depositAmount, conceptDrawingsConfirmed, workingDrawingsConfirmed, energyReport) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      job.address,
-      job.finish,
-      job.class,
-      job.name1,
-      job.name2,
-      job.email1,
-      job.email2,
-      job.notes || "",
-      job.price,
-      job.date,
-      job.colors,
-      job.windows,
-      job.contract,
-      job.status || "Design Phase",
-      job.depositAmount || "",
-      job.conceptDrawingsConfirmed || "No",
-      job.workingDrawingsConfirmed || "No",
-      job.energyReport || "No",
+      job.address, job.finish, job.class, job.name1, job.name2,
+      job.email1, job.email2, job.notes || "", job.price, job.date,
+      job.colors, job.windows, job.contract, job.status || "Design Phase",
+      job.depositAmount || "", job.conceptDrawingsConfirmed || "No",
+      job.workingDrawingsConfirmed || "No", job.energyReport || "No"
     ],
     function (err) {
-      if (err) {
-        console.error("❌ Error inserting job:", err.message);
-        return res.status(400).json({ error: err.message });
-      }
+      if (err) return res.status(400).json(err);
+
       db.get("SELECT * FROM jobs WHERE id=?", [this.lastID], (e, row) => {
-        if (e) {
-          console.error("❌ Error fetching new job:", e.message);
-          return res.status(500).json({ error: e.message });
-        }
-        // Fire NEW JOB email (one-off)
-        db.get("SELECT * FROM settings WHERE id=1", [], (errS, settingsRow) => {
-          if (errS) console.error("❌ Settings read (new job email):", errS.message);
-          else {
-            console.log("📧 Sending New Job email...");
-            sendNewJobEmail(row, settingsRow);
-          }
+        if (e) return res.status(400).json(e);
+
+        // Send new job email
+        db.get("SELECT * FROM settings WHERE id=1", [], (err2, settingsRow) => {
+          if (!err2 && settingsRow) sendNewJobEmail(row, settingsRow);
         });
+
         res.json(row);
       });
     }
@@ -215,38 +175,16 @@ app.put("/api/jobs/:id", (req, res) => {
       depositAmount=?, conceptDrawingsConfirmed=?, workingDrawingsConfirmed=?, energyReport=?
       WHERE id=?`,
     [
-      job.address,
-      job.finish,
-      job.class,
-      job.name1,
-      job.name2,
-      job.email1,
-      job.email2,
-      job.notes || "",
-      job.price,
-      job.date,
-      job.colors,
-      job.windows,
-      job.contract,
-      job.status || "Design Phase",
-      job.depositAmount || "",
-      job.conceptDrawingsConfirmed || "No",
-      job.workingDrawingsConfirmed || "No",
-      job.energyReport || "No",
-      req.params.id,
+      job.address, job.finish, job.class, job.name1, job.name2,
+      job.email1, job.email2, job.notes || "", job.price, job.date,
+      job.colors, job.windows, job.contract, job.status || "Design Phase",
+      job.depositAmount || "", job.conceptDrawingsConfirmed || "No",
+      job.workingDrawingsConfirmed || "No", job.energyReport || "No",
+      req.params.id
     ],
     function (err) {
-      if (err) {
-        console.error("❌ Error updating job:", err.message);
-        return res.status(400).json({ error: err.message });
-      }
-      db.get("SELECT * FROM jobs WHERE id=?", [req.params.id], (e, row) => {
-        if (e) {
-          console.error("❌ Error fetching updated job:", e.message);
-          return res.status(500).json({ error: e.message });
-        }
-        res.json(row);
-      });
+      if (err) res.status(400).json(err);
+      else db.get("SELECT * FROM jobs WHERE id=?", [req.params.id], (e, row) => res.json(row));
     }
   );
 });
@@ -267,49 +205,51 @@ app.get("/api/settings", (req, res) => {
 });
 
 app.put("/api/settings", (req, res) => {
-  const { emailFrequency, statusTemplate, newJobTemplate } = req.body;
+  const { emailFrequency, emailTemplate, newJobTemplate } = req.body;
   db.run(
-    `UPDATE settings SET emailFrequency=?, statusTemplate=?, newJobTemplate=? WHERE id=1`,
-    [emailFrequency, statusTemplate, newJobTemplate],
+    `UPDATE settings SET emailFrequency=?, emailTemplate=?, newJobTemplate=? WHERE id=1`,
+    [emailFrequency, emailTemplate, newJobTemplate],
     function (err) {
-      if (err) {
-        console.error("❌ Error updating settings:", err.message);
-        return res.status(400).json({ error: err.message });
+      if (err) res.status(400).json(err);
+      else {
+        scheduleEmails(emailFrequency);
+        res.json({ emailFrequency, emailTemplate, newJobTemplate });
       }
-      scheduleEmails(emailFrequency);
-      res.json({ emailFrequency, statusTemplate, newJobTemplate });
     }
   );
 });
 
-// Test email (optional: test type = 'status' | 'new')
+// Test email
 app.post("/api/test-email", (req, res) => {
-  const { to, type = "status" } = req.body;
+  const { to } = req.body;
   if (!to) return res.status(400).json({ error: "Missing 'to' address" });
 
   db.get("SELECT * FROM settings WHERE id=1", [], (err, settingsRow) => {
     if (err) return res.status(500).json({ error: err.message });
 
-    const jobDemo = { address: "123 Example St", name1: "Client", status: "Design Phase", email1: to };
-    if (type === "new") {
-      sendNewJobEmail(jobDemo, settingsRow);
-      return res.json({ ok: true, type: "new" });
-    } else {
-      sendStatusEmail(jobDemo, settingsRow);
-      return res.json({ ok: true, type: "status" });
-    }
+    const mailOptions = {
+      from: "info@superiorgrannyflats.com.au",
+      to,
+      subject: "Superior Granny Flats - Project Update (Test)",
+      text:
+        "Hello,\n\nThis is a test email from SGFMAN.\n\n" +
+        `Project Status: Design Phase\n\n` +
+        `${settingsRow.emailTemplate}\n\n` +
+        "Thanks,\n\nThe Superior Team"
+    };
+
+    transporter.sendMail(mailOptions, (err2, info) => {
+      if (err2) res.status(500).json({ ok: false, error: err2.message });
+      else res.json({ ok: true, response: info.response });
+    });
   });
 });
 
-
-const path = require("path");
-
-// Serve React frontend
-app.use(express.static(path.join(__dirname, "../frontend/build")));
+// --- SERVE FRONTEND BUILD (for Render) ---
+app.use(express.static(path.join(__dirname, "build")));
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/build", "index.html"));
+  res.sendFile(path.join(__dirname, "build", "index.html"));
 });
-
 
 // --- START SERVER ---
 app.listen(5000, () => {
