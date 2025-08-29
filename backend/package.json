@@ -1,22 +1,18 @@
 {
-  "name": "backend",
+  "name": "sgfman-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "SGFMAN backend with Express, SQLite, Nodemailer, Cron",
+  "main": "server.js",
+  "license": "MIT",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "postinstall": "node -e \"if (process.env.RENDER) { process.exit(0) } else { process.exit(0) }\""
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",
-    "dotenv": "^17.2.1",
-    "express": "^5.1.0",
-    "install": "^0.13.0",
-    "node-cron": "^4.2.1",
-    "nodemailer": "^7.0.5",
-    "npm": "^11.5.2",
-    "sqlite3": "^5.1.7"
+    "express": "^4.18.2",
+    "node-cron": "^3.0.2",
+    "nodemailer": "^6.9.3",
+    "sqlite3": "^5.1.6"
   }
 }
