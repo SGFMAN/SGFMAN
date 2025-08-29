@@ -47,6 +47,30 @@ db.run(
    VALUES (1, 'Weekly', 'This is the default job status update email.', 'This is the default new job email.')`
 );
 
+// --- AUTO-MIGRATION for settings table ---
+const requiredSettingsColumns = [
+  { name: "emailFrequency", def: "TEXT DEFAULT 'Weekly'" },
+  { name: "emailTemplate", def: "TEXT DEFAULT 'This is the default job status update email.'" },
+  { name: "newJobTemplate", def: "TEXT DEFAULT 'This is the default new job email.'" }
+];
+
+db.all("PRAGMA table_info(settings);", [], (err, columns) => {
+  if (err) return console.error("❌ Error checking settings schema:", err.message);
+
+  requiredSettingsColumns.forEach((col) => {
+    if (!columns.some((c) => c.name === col.name)) {
+      console.log(`⚙️ Adding missing settings column '${col.name}'...`);
+      db.run(
+        `ALTER TABLE settings ADD COLUMN ${col.name} ${col.def}`,
+        (err2) => {
+          if (err2) console.error(`❌ Error adding column ${col.name}:`, err2.message);
+          else console.log(`✅ Column '${col.name}' added to settings table.`);
+        }
+      );
+    }
+  });
+});
+
 // --- EMAIL TRANSPORT ---
 const transporter = nodemailer.createTransport({
   host: "smtp.office365.com",
