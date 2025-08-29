@@ -1,3 +1,4 @@
+
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const cors = require("cors");
@@ -35,17 +36,13 @@ db.run(`CREATE TABLE IF NOT EXISTS jobs (
   energyReport TEXT DEFAULT 'No'
 )`);
 
-// Settings table
+// --- SETTINGS TABLE (minimal definition, then auto-migration) ---
 db.run(`CREATE TABLE IF NOT EXISTS settings (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  emailFrequency TEXT DEFAULT 'Weekly',
-  emailTemplate TEXT DEFAULT 'This is the default job status update email.',
-  newJobTemplate TEXT DEFAULT 'This is the default new job email.'
+  id INTEGER PRIMARY KEY CHECK (id = 1)
 )`);
-db.run(
-  `INSERT OR IGNORE INTO settings (id, emailFrequency, emailTemplate, newJobTemplate) 
-   VALUES (1, 'Weekly', 'This is the default job status update email.', 'This is the default new job email.')`
-);
+
+// Ensure at least one row exists
+db.run(`INSERT OR IGNORE INTO settings (id) VALUES (1)`);
 
 // --- AUTO-MIGRATION for settings table ---
 const requiredSettingsColumns = [
