@@ -36,35 +36,34 @@ db.run(`CREATE TABLE IF NOT EXISTS jobs (
   energyReport TEXT DEFAULT 'No'
 )`);
 
-// --- SETTINGS TABLE (minimal definition, then auto-migration) ---
-db.run(`CREATE TABLE IF NOT EXISTS settings (
-  id INTEGER PRIMARY KEY CHECK (id = 1)
-)`);
+// --- SETTINGS TABLE (safe creation + auto-migration) ---
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1)
+  )`);
 
-// Ensure at least one row exists
-db.run(`INSERT OR IGNORE INTO settings (id) VALUES (1)`);
+  // Ensure at least one row exists
+  db.run(`INSERT OR IGNORE INTO settings (id) VALUES (1)`);
 
-// --- AUTO-MIGRATION for settings table ---
-const requiredSettingsColumns = [
-  { name: "emailFrequency", def: "TEXT DEFAULT 'Weekly'" },
-  { name: "emailTemplate", def: "TEXT DEFAULT 'This is the default job status update email.'" },
-  { name: "newJobTemplate", def: "TEXT DEFAULT 'This is the default new job email.'" }
-];
+  // Columns we need
+  const requiredSettingsColumns = [
+    { name: "emailFrequency", def: "TEXT DEFAULT 'Weekly'" },
+    { name: "emailTemplate", def: "TEXT DEFAULT 'This is the default job status update email.'" },
+    { name: "newJobTemplate", def: "TEXT DEFAULT 'This is the default new job email.'" }
+  ];
 
-db.all("PRAGMA table_info(settings);", [], (err, columns) => {
-  if (err) return console.error("❌ Error checking settings schema:", err.message);
+  db.all("PRAGMA table_info(settings);", [], (err, columns) => {
+    if (err) return console.error("❌ Error checking settings schema:", err.message);
 
-  requiredSettingsColumns.forEach((col) => {
-    if (!columns.some((c) => c.name === col.name)) {
-      console.log(`⚙️ Adding missing settings column '${col.name}'...`);
-      db.run(
-        `ALTER TABLE settings ADD COLUMN ${col.name} ${col.def}`,
-        (err2) => {
+    requiredSettingsColumns.forEach((col) => {
+      if (!columns.some((c) => c.name === col.name)) {
+        console.log(`⚙️ Adding missing settings column '${col.name}'...`);
+        db.run(`ALTER TABLE settings ADD COLUMN ${col.name} ${col.def}`, (err2) => {
           if (err2) console.error(`❌ Error adding column ${col.name}:`, err2.message);
           else console.log(`✅ Column '${col.name}' added to settings table.`);
-        }
-      );
-    }
+        });
+      }
+    });
   });
 });
 
