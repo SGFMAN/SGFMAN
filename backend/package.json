@@ -1,18 +1,20 @@
 {
   "name": "sgfman-backend",
   "version": "1.0.0",
-  "description": "SGFMAN backend with Express, SQLite, Nodemailer, Cron",
+  "description": "SGFMAN backend with Express, Better-SQLite3, Nodemailer, and Cron",
   "main": "server.js",
   "license": "MIT",
   "scripts": {
     "start": "node server.js",
-    "postinstall": "node -e \"if (process.env.RENDER) { process.exit(0) } else { process.exit(0) }\""
+    "dev": "nodemon server.js",
+    "postinstall": "npm run build-frontend || exit 0",
+    "build-frontend": "cd ../frontend && npm install && npm run build && xcopy /E /I build ../backend/build"
   },
   "dependencies": {
+    "better-sqlite3": "^12.2.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "node-cron": "^3.0.2",
-    "nodemailer": "^6.9.3",
-    "sqlite3": "^5.1.6"
+    "nodemailer": "^6.9.3"
   }
 }

@@ -1,15 +1,10 @@
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  useNavigate,
-  useParams,
-} from "react-router-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
-import SettingsPage from "./pages/SettingsPage";
+import { BrowserRouter as Router, Routes, Route, useNavigate, useParams } from "react-router-dom";
+import { useState, useEffect, useMemo, useRef } from "react";
+import SettingsPage from "./SettingsPage";
 
-/* ----------------------------- Front Page ----------------------------- */
-
+/* =========================
+   ---- FRONT PAGE ----
+   ========================= */
 function Home({ jobs }) {
   const [search, setSearch] = useState("");
   const navigate = useNavigate();
@@ -41,9 +36,7 @@ function Home({ jobs }) {
       <ul style={{ listStyle: "none", padding: 0, marginTop: "20px" }}>
         {filtered.map((job) => (
           <li key={job.id} style={{ margin: "10px 0" }}>
-            <button onClick={() => navigate(`/job/${job.id}`)}>
-              {job.address}
-            </button>
+            <button onClick={() => navigate(`/job/${job.id}`)}>{job.address}</button>
             <span style={{ marginLeft: "10px", fontStyle: "italic", color: "#555" }}>
               ({job.status || "Design Phase"})
             </span>
@@ -54,151 +47,72 @@ function Home({ jobs }) {
   );
 }
 
-/* ----------------------------- Job Detail ----------------------------- */
-
-const EMPTY = {
-  address: "",
-  finish: "",
-  class: "",
-  name1: "",
-  name2: "",
-  email1: "",
-  email2: "",
-  notes: "",
-  price: "",
-  date: "",
-  colors: "",
-  windows: "",
-  contract: "",
-  status: "Design Phase",
-  depositAmount: "",
-  conceptDrawingsConfirmed: "No",
-  workingDrawingsConfirmed: "No",
-  energyReport: "No",
-};
-
+/* =========================
+   ---- JOB DETAIL ----
+   ========================= */
 function JobDetail({ jobs, setJobs }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const isNew = id === "new";
+  const job = jobs.find((j) => j.id === Number(id));
 
-  const job = useMemo(
-    () => (isNew ? { ...EMPTY } : { ...EMPTY, ...(jobs.find((j) => j.id === Number(id)) || {}) }),
-    [isNew, id, jobs]
-  );
-
-  // Refs for uncontrolled text/number/date inputs
-  const refs = {
-    address: useRef(null),
-    name1: useRef(null),
-    name2: useRef(null),
-    email1: useRef(null),
-    email2: useRef(null),
-    notes: useRef(null),
-    price: useRef(null),
-    date: useRef(null),
+  const emptyJob = {
+    address: "",
+    finish: "",
+    class: "",
+    name1: "",
+    name2: "",
+    email1: "",
+    email2: "",
+    notes: "",
+    price: "",
+    date: "",
+    colors: "",
+    windows: "",
+    contract: "",
+    status: "Design Phase",
+    depositAmount: "",
+    conceptDrawingsConfirmed: "No",
+    workingDrawingsConfirmed: "No",
+    energyReport: "No",
   };
 
-  // Controlled for selects only
-  const [selects, setSelects] = useState({
-    finish: job.finish,
-    class: job.class,
-    status: job.status,
-    depositAmount: job.depositAmount,
-    conceptDrawingsConfirmed: job.conceptDrawingsConfirmed,
-    workingDrawingsConfirmed: job.workingDrawingsConfirmed,
-    colors: job.colors,
-    windows: job.windows,
-    energyReport: job.energyReport,
-    contract: job.contract,
-  });
+  const [status, setStatus] = useState(job?.status || emptyJob.status);
 
-  // Initialize input values when job changes
   useEffect(() => {
-    if (refs.address.current) refs.address.current.value = job.address || "";
-    if (refs.name1.current) refs.name1.current.value = job.name1 || "";
-    if (refs.name2.current) refs.name2.current.value = job.name2 || "";
-    if (refs.email1.current) refs.email1.current.value = job.email1 || "";
-    if (refs.email2.current) refs.email2.current.value = job.email2 || "";
-    if (refs.notes.current) refs.notes.current.value = job.notes || "";
-    if (refs.price.current) refs.price.current.value = job.price || "";
-    if (refs.date.current) refs.date.current.value = job.date || "";
+    setStatus(job?.status || emptyJob.status);
+  }, [id, job]);
 
-    setSelects({
-      finish: job.finish || "",
-      class: job.class || "",
-      status: job.status || "Design Phase",
-      depositAmount: job.depositAmount || "",
-      conceptDrawingsConfirmed: job.conceptDrawingsConfirmed || "No",
-      workingDrawingsConfirmed: job.workingDrawingsConfirmed || "No",
-      colors: job.colors || "",
-      windows: job.windows || "",
-      energyReport: job.energyReport || "No",
-      contract: job.contract || "",
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNew, job?.id]);
-
-  const onSelectChange = (e) => {
-    const { name, value } = e.target;
-    setSelects((s) => ({ ...s, [name]: value }));
-  };
-
-  const collectForm = () => ({
-    address: refs.address.current?.value || "",
-    name1: refs.name1.current?.value || "",
-    name2: refs.name2.current?.value || "",
-    email1: refs.email1.current?.value || "",
-    email2: refs.email2.current?.value || "",
-    notes: refs.notes.current?.value || "",
-    price: refs.price.current?.value || "",
-    date: refs.date.current?.value || "",
-    finish: selects.finish || "",
-    class: selects.class || "",
-    status: selects.status || "Design Phase",
-    depositAmount: selects.depositAmount || "",
-    conceptDrawingsConfirmed: selects.conceptDrawingsConfirmed || "No",
-    workingDrawingsConfirmed: selects.workingDrawingsConfirmed || "No",
-    colors: selects.colors || "",
-    windows: selects.windows || "",
-    energyReport: selects.energyReport || "No",
-    contract: selects.contract || "",
-  });
+  const formRef = useRef(null);
 
   const saveJob = async () => {
-    const payload = collectForm();
+    const fd = new FormData(formRef.current);
+    const payload = Object.fromEntries(fd.entries());
+    payload.status = status;
 
-    try {
-      if (isNew) {
-        const res = await fetch("http://localhost:5000/api/jobs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const created = await res.json();
-        if (!res.ok) throw new Error(created.error || "Failed to create job");
-      } else {
-        const res = await fetch(`http://localhost:5000/api/jobs/${id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const updated = await res.json();
-        if (!res.ok) throw new Error(updated.error || "Failed to update job");
-      }
+    if (isNew) {
+      await fetch("http://localhost:5000/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await fetch(`http://localhost:5000/api/jobs/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }
 
-      const jobsRes = await fetch("http://localhost:5000/api/jobs");
-      const jobsData = await jobsRes.json();
-      setJobs(jobsData);
+    const jobsRes = await fetch("http://localhost:5000/api/jobs");
+    const jobsData = await jobsRes.json();
+    setJobs(jobsData);
 
-      if (isNew) {
-        const newest = jobsData[jobsData.length - 1];
-        navigate(`/job/${newest.id}`);
-      } else {
-        alert("Job updated!");
-      }
-    } catch (err) {
-      alert(`Save failed: ${err.message}`);
+    if (isNew) {
+      const newest = jobsData[jobsData.length - 1];
+      navigate(`/job/${newest.id}`);
+    } else {
+      alert("Job updated!");
     }
   };
 
@@ -223,12 +137,11 @@ function JobDetail({ jobs, setJobs }) {
     return (
       <div
         style={{
-          gridColumn: "1 / -1",
           background: "#f9f9f9",
           padding: "10px",
           borderRadius: "8px",
           marginBottom: "15px",
-          border: "1px solid #ddd",   // ✅ FIXED HERE
+          border: "1px solid #ddd",
         }}
       >
         <h3
@@ -255,14 +168,17 @@ function JobDetail({ jobs, setJobs }) {
     );
   };
 
+  const formKey = isNew ? "new" : `job-${id}`;
+  const current = job || emptyJob;
+
   return (
     <div style={{ padding: "20px" }}>
-      <h2>{isNew ? "Create New Job" : `Job Detail: ${job.address || ""}`}</h2>
+      <h2>{isNew ? "Create New Job" : `Job Detail: ${current.address}`}</h2>
 
-      {/* Project status */}
+      {/* Project status dropdown */}
       <div style={{ margin: "15px 0", display: "flex", alignItems: "center" }}>
         <label style={{ marginRight: "10px", fontWeight: "bold" }}>Project Status:</label>
-        <select name="status" value={selects.status} onChange={onSelectChange}>
+        <select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="Design Phase">Design Phase</option>
           <option value="Town Planning">Town Planning</option>
           <option value="With Building Surveyor">With Building Surveyor</option>
@@ -272,157 +188,129 @@ function JobDetail({ jobs, setJobs }) {
         </select>
       </div>
 
-      {/* Columns */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr",
-          gap: "30px",
-          maxWidth: "1400px",
-        }}
-      >
-        {/* Column 1 */}
-        <div>
-          <Section title="Project details">
-            <Row label="Address">
-              <input name="address" ref={refs.address} defaultValue={job.address || ""} />
-            </Row>
-            <Row label="Finish">
-              <select name="finish" value={selects.finish} onChange={onSelectChange}>
-                <option value="">Select Finish</option>
-                <option value="Affordable">Affordable</option>
-                <option value="Superior">Superior</option>
-              </select>
-            </Row>
-            <Row label="Class">
-              <select name="class" value={selects.class} onChange={onSelectChange}>
-                <option value="">Select Class</option>
-                <option value="Dwelling">Dwelling</option>
-                <option value="SSD">SSD</option>
-                <option value="DPU">DPU</option>
-                <option value="Det. Ex">Det. Ex</option>
-                <option value="Studio">Studio</option>
-              </select>
-            </Row>
-          </Section>
+      <form ref={formRef} key={formKey}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: "30px",
+            maxWidth: "1400px",
+          }}
+        >
+          {/* Column 1 */}
+          <div>
+            <Section title="Project details">
+              <Row label="Address"><input name="address" defaultValue={current.address} /></Row>
+              <Row label="Finish">
+                <select name="finish" defaultValue={current.finish}>
+                  <option value="">Select Finish</option>
+                  <option value="Affordable">Affordable</option>
+                  <option value="Superior">Superior</option>
+                </select>
+              </Row>
+              <Row label="Class">
+                <select name="class" defaultValue={current.class}>
+                  <option value="">Select Class</option>
+                  <option value="Dwelling">Dwelling</option>
+                  <option value="SSD">SSD</option>
+                  <option value="DPU">DPU</option>
+                  <option value="Det. Ex">Det. Ex</option>
+                  <option value="Studio">Studio</option>
+                </select>
+              </Row>
+            </Section>
 
-          <Section title="Client info">
-            <Row label="Name 1">
-              <input name="name1" ref={refs.name1} defaultValue={job.name1 || ""} />
-            </Row>
-            <Row label="Name 2">
-              <input name="name2" ref={refs.name2} defaultValue={job.name2 || ""} />
-            </Row>
-            <Row label="Email 1">
-              <input type="email" name="email1" ref={refs.email1} defaultValue={job.email1 || ""} />
-            </Row>
-            <Row label="Email 2">
-              <input type="email" name="email2" ref={refs.email2} defaultValue={job.email2 || ""} />
-            </Row>
-          </Section>
+            <Section title="Client info">
+              <Row label="Name 1"><input name="name1" defaultValue={current.name1} /></Row>
+              <Row label="Name 2"><input name="name2" defaultValue={current.name2} /></Row>
+              <Row label="Email 1"><input type="email" name="email1" defaultValue={current.email1} /></Row>
+              <Row label="Email 2"><input type="email" name="email2" defaultValue={current.email2} /></Row>
+            </Section>
 
-          <Section title="Finance">
-            <Row label="Price ($)">
-              <input type="number" name="price" ref={refs.price} defaultValue={job.price || ""} />
-            </Row>
-            <Row label="Date">
-              <input type="date" name="date" ref={refs.date} defaultValue={job.date || ""} />
-            </Row>
-            <Row label="Deposit Amount">
-              <select
-                name="depositAmount"
-                value={selects.depositAmount}
-                onChange={onSelectChange}
-              >
-                <option value="">Select Deposit</option>
-                <option value="Full 5%">Full 5%</option>
-                <option value="$5000 only">$5000 only</option>
-              </select>
-            </Row>
-          </Section>
+            <Section title="Finance">
+              <Row label="Price ($)"><input type="number" name="price" defaultValue={current.price} /></Row>
+              <Row label="Date"><input type="date" name="date" defaultValue={current.date} /></Row>
+              <Row label="Deposit Amount">
+                <select name="depositAmount" defaultValue={current.depositAmount}>
+                  <option value="">Select Deposit</option>
+                  <option value="Full 5%">Full 5%</option>
+                  <option value="$5000 only">$5000 only</option>
+                </select>
+              </Row>
+            </Section>
+          </div>
+
+          {/* Column 2 */}
+          <div>
+            <Section title="Drawings">
+              <Row label="Concept Drawings Confirmed">
+                <select name="conceptDrawingsConfirmed" defaultValue={current.conceptDrawingsConfirmed}>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </Row>
+              <Row label="Working Drawings Confirmed">
+                <select name="workingDrawingsConfirmed" defaultValue={current.workingDrawingsConfirmed}>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </Row>
+            </Section>
+
+            <Section title="Materials">
+              <Row label="Colors">
+                <select name="colors" defaultValue={current.colors}>
+                  <option value="">Select Colors</option>
+                  <option value="Not Sent">Not Sent</option>
+                  <option value="Waiting">Waiting</option>
+                  <option value="Complete">Complete</option>
+                </select>
+              </Row>
+              <Row label="Windows">
+                <select name="windows" defaultValue={current.windows}>
+                  <option value="">Select Windows</option>
+                  <option value="Not Ordered">Not Ordered</option>
+                  <option value="Ordered">Ordered</option>
+                </select>
+              </Row>
+            </Section>
+
+            <Section title="Reports">
+              <Row label="Energy Report">
+                <select name="energyReport" defaultValue={current.energyReport}>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </Row>
+            </Section>
+          </div>
+
+          {/* Column 3 */}
+          <div>
+            <Section title="Project Notes">
+              <Row label="Notes" wide>
+                <textarea name="notes" defaultValue={current.notes} rows={3} style={{ width: "100%" }} />
+              </Row>
+            </Section>
+
+            <Section title="Admin">
+              <Row label="Contract">
+                <select name="contract" defaultValue={current.contract}>
+                  <option value="">Select Contract</option>
+                  <option value="Not Sent">Not Sent</option>
+                  <option value="Waiting">Waiting</option>
+                  <option value="Complete">Complete</option>
+                </select>
+              </Row>
+            </Section>
+          </div>
         </div>
-
-        {/* Column 2 */}
-        <div>
-          <Section title="Drawings">
-            <Row label="Concept Drawings Confirmed">
-              <select
-                name="conceptDrawingsConfirmed"
-                value={selects.conceptDrawingsConfirmed}
-                onChange={onSelectChange}
-              >
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
-            </Row>
-            <Row label="Working Drawings Confirmed">
-              <select
-                name="workingDrawingsConfirmed"
-                value={selects.workingDrawingsConfirmed}
-                onChange={onSelectChange}
-              >
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
-            </Row>
-          </Section>
-
-          <Section title="Materials">
-            <Row label="Colors">
-              <select name="colors" value={selects.colors} onChange={onSelectChange}>
-                <option value="">Select Colors</option>
-                <option value="Not Sent">Not Sent</option>
-                <option value="Waiting">Waiting</option>
-                <option value="Complete">Complete</option>
-              </select>
-            </Row>
-            <Row label="Windows">
-              <select name="windows" value={selects.windows} onChange={onSelectChange}>
-                <option value="">Select Windows</option>
-                <option value="Not Ordered">Not Ordered</option>
-                <option value="Ordered">Ordered</option>
-              </select>
-            </Row>
-          </Section>
-
-          <Section title="Reports">
-            <Row label="Energy Report">
-              <select name="energyReport" value={selects.energyReport} onChange={onSelectChange}>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
-            </Row>
-          </Section>
-        </div>
-
-        {/* Column 3 */}
-        <div>
-          <Section title="Project Notes">
-            <Row label="Notes" wide>
-              <input name="notes" ref={refs.notes} defaultValue={job.notes || ""} style={{ width: "100%" }} />
-            </Row>
-          </Section>
-
-          <Section title="Admin">
-            <Row label="Contract">
-              <select name="contract" value={selects.contract} onChange={onSelectChange}>
-                <option value="">Select Contract</option>
-                <option value="Not Sent">Not Sent</option>
-                <option value="Waiting">Waiting</option>
-                <option value="Complete">Complete</option>
-              </select>
-            </Row>
-          </Section>
-        </div>
-      </div>
+      </form>
 
       <div style={{ marginTop: "20px" }}>
         <button onClick={saveJob}>{isNew ? "Create Job" : "Save Changes"}</button>
         {!isNew && (
-          <button
-            onClick={deleteJob}
-            style={{ marginLeft: "10px", backgroundColor: "red", color: "white" }}
-          >
+          <button onClick={deleteJob} style={{ marginLeft: "10px", backgroundColor: "red", color: "white" }}>
             Delete Project
           </button>
         )}
@@ -434,8 +322,9 @@ function JobDetail({ jobs, setJobs }) {
   );
 }
 
-/* ------------------------------- App Root ------------------------------- */
-
+/* =========================
+   ---- APP ROOT ----
+   ========================= */
 export default function App() {
   const [jobs, setJobs] = useState([]);
 
